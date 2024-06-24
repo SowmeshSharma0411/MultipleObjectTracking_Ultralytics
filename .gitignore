@@ -1,0 +1,6 @@
+runs/
+SampleVids/
+test_vnev/
+yolov8m.pt
+yolov8n.pt
+yolov8x.pt
