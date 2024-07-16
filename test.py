@@ -2,29 +2,30 @@ from ultralytics import YOLO
 import cv2
 from collections import defaultdict
 import numpy as np
-# import torch
 import time
 import os
 import json
+import torch
+from sahi import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
+from sahi.utils.yolov8 import download_yolov8s_model
+from ultralytics.utils.files import increment_path
 
-# start = time.time()
-# model = YOLO("yolov8n.pt")
-# print(torch.cuda.is_available())
+# Function to run YOLOv8 with SAHI for object detection
+def detect_with_sahi(frame, detection_model):
+    results = get_sliced_prediction(
+        frame, detection_model, slice_height=512, slice_width=512, overlap_height_ratio=0.2, overlap_width_ratio=0.2
+    )
+    return results.object_prediction_list
 
-# results = model.track("SampleVids/bombay_trafficShortened.mp4", show=True, tracker="bytetrack.yaml", save=True)  # with ByteTrack
-# end = time.time()
-# length = end - start
-
-# # Show the results : this can be altered however you like
-# print("It took", length, "seconds!")
-
-start= time.time()
-
-# Load the YOLOv8 model
-model = YOLO("yolov8x.pt")
+# Initialize YOLOv8 model and move to GPU
+model = YOLO("yolov8x.pt").to('cuda')
+detection_model = AutoDetectionModel.from_pretrained(
+    model_type="yolov8", model_path="models/yolov8x.pt", confidence_threshold=0.3, device="cuda"
+)
 
 # Open the video file
-video_path = "SampleVids/bombay_trafficShortened.mp4"
+video_path = "Road traffic video for object recognition-Trim.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Store the track history
@@ -33,13 +34,13 @@ track_history = defaultdict(lambda: [])
 _tracker = "bytetrack.yaml"
 
 new_track_dir_no = 2
-for d in os.listdir("runs/detect"):
+for d in os.listdir("C:\\Gouda\\Capstone\\Segmentation\\YOLO\\out_vid"):
     if d.startswith("track"):
         new_track_dir_no = max(int(d[5:]), new_track_dir_no)
 
-new_track_dir_no+=1
+new_track_dir_no += 1
 new_track_dir = f"track{new_track_dir_no}"
-new_track_path = os.path.join("runs/detect", new_track_dir)
+new_track_path = os.path.join("C:\\Gouda\\Capstone\\Segmentation\\YOLO\\out_vid", new_track_dir)
 os.makedirs(new_track_path)
 
 output_video_path = os.path.join(new_track_path, "output.mp4")
@@ -49,10 +50,11 @@ width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
-frame_stride = 20  # Number of frames to skip between each detection
+frame_stride = 30  # Number of frames to skip between each detection
 
-i=0
+i = 0
 
+start = time.time()
 
 # Loop through the video frames
 while cap.isOpened():
@@ -60,8 +62,22 @@ while cap.isOpened():
     success, frame = cap.read()
 
     if success:
+        # Run SAHI for object detection
+        object_predictions = detect_with_sahi(frame, detection_model)
+
+        # Prepare detections for ByteTrack
+        detections = []
+        for obj_pred in object_predictions:
+            x1, y1, x2, y2 = obj_pred.bbox.minx, obj_pred.bbox.miny, obj_pred.bbox.maxx, obj_pred.bbox.maxy
+            confidence = obj_pred.score.value
+            class_id = obj_pred.category.id
+            detections.append([x1, y1, x2, y2, confidence, class_id])
+
+        # Convert detections to tensor and move to GPU
+        detections_tensor = torch.tensor(detections).to('cuda')
+
         # Run YOLOv8 tracking on the frame, persisting tracks between frames
-        results = model.track(frame, persist=True, tracker=_tracker)
+        results = model.track(frame, persist=True, tracker=_tracker)  # pass the frame here
 
         # Get the boxes and track IDs
         boxes = results[0].boxes.xywh.cpu()
@@ -70,19 +86,12 @@ while cap.isOpened():
         # Visualize the results on the frame
         annotated_frame = results[0].plot()
 
-        if(i%frame_stride==0):
+        if i % frame_stride == 0:
             # Plot the tracks
             for box, track_id in zip(boxes, track_ids):
                 x, y, w, h = box
                 track = track_history[track_id]
-                # track.append((float(x), float(y)))  # x, y center point
                 track.append((float(x), float(y), float(w), float(h)))
-                # if len(track) > 30:  # retain 90 tracks for 90 frames
-                #     track.pop(0)
-
-                # Draw the tracking lines
-                # points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
-                # cv2.polylines(annotated_frame, [points], isClosed=False, color=(230, 230, 230), thickness=3)
 
             # Write the annotated frame to the output video
         out.write(annotated_frame)
@@ -90,7 +99,7 @@ while cap.isOpened():
         # Display the annotated frame
         cv2.imshow("YOLOv8 Tracking", annotated_frame)
 
-        i+=1
+        i += 1
 
         # Break the loop if 'q' is pressed
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -103,10 +112,6 @@ while cap.isOpened():
 cap.release()
 out.release()
 cv2.destroyAllWindows()
-
-# with open(os.path.join(new_track_path, "track_history.txt"), "w") as f:
-#     for track_id, points in track_history.items():
-#         f.write(f"Track ID {track_id}: {points}\n")
 
 # Convert track_history to a regular dictionary
 track_history_dict = {track_id: points for track_id, points in track_history.items()}
