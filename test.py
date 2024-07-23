@@ -11,7 +11,8 @@ start = time.time()
 
 model = YOLO("yolov8x.pt")
 
-video_path = "Road traffic video for object recognition-Trim.mp4"
+# video_path = "Road traffic video for object recognition-Trim.mp4"
+video_path = "SampleVids/bombay_trafficShortened.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Store the track history
@@ -19,14 +20,17 @@ track_history = defaultdict(lambda: [])
 
 _tracker = "bytetrack.yaml"
 
+# new_dir = "C:\\Gouda\\Capstone\\Segmentation\\YOLOV8\\MultipleObjectTracking_Ultralytics\\Tracks"
+new_dir = "runs/detect"
+
 new_track_dir_no = 2
-for d in os.listdir("C:\\Gouda\\Capstone\\Segmentation\\YOLOV8\\MultipleObjectTracking_Ultralytics\\Tracks"):
+for d in os.listdir(new_dir):
     if d.startswith("track"):
         new_track_dir_no = max(int(d[5:]), new_track_dir_no)
 
 new_track_dir_no += 1
 new_track_dir = f"track{new_track_dir_no}"
-new_track_path = os.path.join("C:\\Gouda\\Capstone\\Segmentation\\YOLOV8\\MultipleObjectTracking_Ultralytics\\Tracks", new_track_dir)
+new_track_path = os.path.join(new_dir, new_track_dir)
 os.makedirs(new_track_path)
 
 output_video_path = os.path.join(new_track_path, "output.mp4")
@@ -47,8 +51,11 @@ while cap.isOpened():
     if success:
         results = model.track(frame, persist=True, tracker=_tracker)
 
-        boxes = results[0].boxes.xywh.cpu()
-        track_ids = results[0].boxes.id.int().cpu().tolist()
+        #its either .cuda() or.device('cuda').
+        #@Shivgouda test this out...older code had .cpu()
+        #im talking abt the next 2 lines
+        boxes = results[0].boxes.xywh.cuda()
+        track_ids = results[0].boxes.id.int().cuda().tolist()
 
         annotated_frame = results[0].plot()
 
