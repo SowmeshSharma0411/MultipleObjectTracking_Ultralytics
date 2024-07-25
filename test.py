@@ -6,6 +6,14 @@ import os
 import json
 from scipy.spatial import cKDTree
 from filterpy.kalman import KalmanFilter
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+import torch
+import gc
+import threading
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(device)
 
 def init_kalman_filter():
     kf = KalmanFilter(dim_x=4, dim_z=2)
@@ -54,7 +62,7 @@ start = time.time()
 model = YOLO("yolov8x.pt")
 
 # Open the video file
-video_path = "traffic3.mp4"
+video_path = "SampleVids/traffic_vid2Shortened.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Store the track history
@@ -121,12 +129,12 @@ cap.release()
 out.release()
 cv2.destroyAllWindows()
 
-# Calculate velocities and nearby objects
-min_track_length = 5
-track_data = {}
-radius = 50  # Radius for nearby object detection
+torch.cuda.empty_cache()
+torch.cuda.reset_max_memory_allocated()
+torch.cuda.reset_peak_memory_stats()
+gc.collect()
 
-for track_id, track in track_history.items():
+def process_trajectory(track_id, track):
     if len(track) >= min_track_length:
         velocities = calculate_velocity(track, frame_stride, fps, frame_diagonal)
         
@@ -136,10 +144,46 @@ for track_id, track in track_history.items():
             nearby = count_nearby_objects(point[:2], all_objects, radius)
             nearby_objects.append(nearby)
         
-        track_data[str(track_id)] = [
+        return str(track_id), [
             (x, y, w, h, dx, dy, speed, nearby)
             for (x, y, w, h), (dx, dy, speed, _, _), nearby in zip(track[1:], velocities, nearby_objects[1:])
         ]
+    return None
+
+# Calculate velocities and nearby objects
+min_track_length = 5
+track_data = {}
+radius = 50  # Radius for nearby object detection
+
+max_threads = min(32, os.cpu_count() + 4)
+
+with ThreadPoolExecutor(max_workers=max_threads) as executor:
+    future_to_track = {executor.submit(process_trajectory,track_id,track): track_id for track_id, track in track_history.items()}
+    for future in concurrent.futures.as_completed(future_to_track):
+        result = future.result()
+        if result:
+            track_id, track = result
+            track_data[track_id] = track
+
+    executor.shutdown(wait=True)
+
+threading.local().__dict__.clear()
+gc.collect()
+
+# for track_id, track in track_history.items():
+#     if len(track) >= min_track_length:
+#         velocities = calculate_velocity(track, frame_stride, fps, frame_diagonal)
+        
+#         nearby_objects = []
+#         for i, point in enumerate(track):
+#             all_objects = [p[:2] for tid, t in track_history.items() for p in t[max(0, i-1):i+2]]
+#             nearby = count_nearby_objects(point[:2], all_objects, radius)
+#             nearby_objects.append(nearby)
+        
+#         track_data[str(track_id)] = [
+#             (x, y, w, h, dx, dy, speed, nearby)
+#             for (x, y, w, h), (dx, dy, speed, _, _), nearby in zip(track[1:], velocities, nearby_objects[1:])
+#         ]
 
 # Save track data
 with open(os.path.join(new_track_path, "track_history.json"), "w") as json_f:
