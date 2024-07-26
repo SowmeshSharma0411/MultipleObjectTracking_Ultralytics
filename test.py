@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import torch
 import gc
 import threading
+from sklearn.neighbors import NearestNeighbors
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
@@ -52,12 +53,35 @@ def calculate_velocity(track, frame_interval, fps, frame_diagonal):
     
     return velocities
 
-def count_nearby_objects(current_object, all_objects, radius, frame_width, frame_height):
-    # Limit the search area to a square around the current object
-    search_radius = min(radius, frame_width * 0.1, frame_height * 0.1)
+def estimate_average_spacing(all_objects, k=5):
+    if len(all_objects) < 2:
+        return 150
+    
+    # Extract centroids and sizes
+    centroids = np.array([[obj[0], obj[1]] for obj in all_objects])
+    sizes = np.array([max(obj[2], obj[3]) for obj in all_objects])
+    
+    # Adapt k based on the number of objects
+    k = min(k, len(all_objects) - 1)
+    
+    # Find k-nearest neighbors
+    nbrs = NearestNeighbors(n_neighbors=k+1, algorithm='ball_tree').fit(centroids)
+    distances, _ = nbrs.kneighbors(centroids)
+    
+    avg_distances = np.median(distances[:, 1:], axis=1)  # Exclude self-distance
+    
+    # Adjust spacing based on object sizes
+    adjusted_spacing = avg_distances + (sizes / 2)
+    
+    return np.median(adjusted_spacing)
+
+def count_nearby_objects(current_object, all_objects, frame_width, frame_height, estimated_spacing):
+    # Use estimated spacing to determine dynamic radius
+    dynamic_radius = estimated_spacing * 0.75  # Adjust factor as needed
+    
     x, y = current_object
-    x_min, x_max = max(0, x - search_radius), min(frame_width, x + search_radius)
-    y_min, y_max = max(0, y - search_radius), min(frame_height, y + search_radius)
+    x_min, x_max = max(0, x - dynamic_radius), min(frame_width, x + dynamic_radius)
+    y_min, y_max = max(0, y - dynamic_radius), min(frame_height, y + dynamic_radius)
     
     # Filter objects within the search area
     nearby_objects = [obj for obj in all_objects if x_min <= obj[0] <= x_max and y_min <= obj[1] <= y_max]
@@ -66,7 +90,7 @@ def count_nearby_objects(current_object, all_objects, radius, frame_width, frame
         return 0
     
     tree = cKDTree(nearby_objects)
-    return len(tree.query_ball_point(current_object, search_radius)) - 1
+    return len(tree.query_ball_point(current_object, dynamic_radius)) - 1
 
 start = time.time()
 
@@ -74,7 +98,7 @@ start = time.time()
 model = YOLO("yolov8n.pt")
 
 # Open the video file
-video_path = "traffic.mp4"
+video_path = "SampleVids/bombay_trafficShortened.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Store the track history
@@ -96,23 +120,35 @@ width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
+print(fps, width, height)
+
 frame_diagonal = np.sqrt(width**2 + height**2)
-frame_stride = max(1, int(fps / 10))  # Adaptive frame stride
+frame_stride = max(1, int(fps / 1.5))  # Adaptive frame stride
 frame_count = 0
 
 # Vehicle classes in COCO dataset
 vehicle_classes = [2, 3, 5, 7]  # car, motorcycle, bus, truck
+
+
+frame_to_calculate_distance = 360  
+dynamic_radius = 150
+alpha = 0.2  # Smoothing factor for dynamic radius
 
 while cap.isOpened():
     success, frame = cap.read()
     if success:
         results = model.track(frame, persist=True, tracker=tracker)
         
-        boxes = results[0].boxes.xywh.cpu()
-        track_ids = results[0].boxes.id.int().cpu().tolist()
-        classes = results[0].boxes.cls.cpu().tolist()
+        boxes = results[0].boxes.xywh
+        track_ids = results[0].boxes.id.int().tolist()
+        classes = results[0].boxes.cls.tolist()
         
         annotated_frame = results[0].plot()
+
+        if frame_count == frame_to_calculate_distance:
+            curr_frame_objects = [(box[0].item(), box[1].item(), box[2].item(), box[3].item()) for box, cls in zip(boxes, classes) if int(cls) in vehicle_classes]
+            # dynamic_radius = estimate_average_spacing(curr_frame_objects)
+            dynamic_radius = alpha * estimate_average_spacing(curr_frame_objects) + (1 - alpha) * dynamic_radius
         
         if frame_count % frame_stride == 0:
             for box, track_id, cls in zip(boxes, track_ids, classes):
@@ -146,6 +182,8 @@ torch.cuda.reset_max_memory_allocated()
 torch.cuda.reset_peak_memory_stats()
 gc.collect()
 
+print(dynamic_radius)
+
 def process_trajectory(track_id, track, all_tracks, frame_width, frame_height, vehicle_classes):
     if len(track) >= min_track_length:
         velocities = calculate_velocity(track, frame_stride, fps, frame_diagonal)
@@ -154,7 +192,8 @@ def process_trajectory(track_id, track, all_tracks, frame_width, frame_height, v
         for i, point in enumerate(track):
             # Only consider objects in the current frame
             current_frame_objects = [t[i][:2] for t in all_tracks.values() if len(t) > i and int(t[i][4]) in vehicle_classes]
-            nearby = count_nearby_objects(point[:2], current_frame_objects, radius, frame_width, frame_height)
+
+            nearby = count_nearby_objects(point[:2], current_frame_objects, dynamic_radius, frame_width, frame_height)
             nearby_objects.append(nearby)
         
         return str(track_id), [
@@ -166,7 +205,6 @@ def process_trajectory(track_id, track, all_tracks, frame_width, frame_height, v
 # Calculate velocities and nearby objects
 min_track_length = 5
 track_data = {}
-radius = 50  # Radius for nearby object detection
 
 max_threads = min(32, os.cpu_count() + 4)
 
