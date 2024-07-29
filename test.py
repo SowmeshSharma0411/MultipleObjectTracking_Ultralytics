@@ -71,7 +71,7 @@ def estimate_average_spacing(all_objects, k=5):
     avg_distances = np.median(distances[:, 1:], axis=1)  # Exclude self-distance
     
     # Adjust spacing based on object sizes
-    adjusted_spacing = avg_distances + (sizes / 2)
+    adjusted_spacing = avg_distances + (sizes / 4)
     
     return np.median(adjusted_spacing)
 
@@ -147,7 +147,6 @@ while cap.isOpened():
 
         if frame_count == frame_to_calculate_distance:
             curr_frame_objects = [(box[0].item(), box[1].item(), box[2].item(), box[3].item()) for box, cls in zip(boxes, classes) if int(cls) in vehicle_classes]
-            # dynamic_radius = estimate_average_spacing(curr_frame_objects)
             dynamic_radius = alpha * estimate_average_spacing(curr_frame_objects) + (1 - alpha) * dynamic_radius
         
         if frame_count % frame_stride == 0:
