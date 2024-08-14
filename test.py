@@ -95,10 +95,10 @@ def count_nearby_objects(current_object, all_objects, frame_width, frame_height,
 start = time.time()
 
 # Load the YOLOv8 model
-model = YOLO("yolov8n.pt")
+model = YOLO("best.pt")
 
 # Open the video file
-video_path = "SampleVids/bombay_trafficShortened.mp4"
+video_path = "SampleVids/traffic_vid2Shortened.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Store the track history
@@ -181,7 +181,7 @@ torch.cuda.reset_max_memory_allocated()
 torch.cuda.reset_peak_memory_stats()
 gc.collect()
 
-print(dynamic_radius)
+# print(dynamic_radius)
 
 def process_trajectory(track_id, track, all_tracks, frame_width, frame_height, vehicle_classes):
     if len(track) >= min_track_length:
