@@ -16,7 +16,7 @@ representative_trajectories = []
 for obj, traj_list in data.items():
     traj_array = np.array(traj_list)
 
-    traj_array = traj_array[:, -4:-1]
+    traj_array = traj_array[:, -4:]
 
     # Compute the mean trajectory
     rep_traj = np.mean(traj_array, axis=0)
@@ -26,6 +26,7 @@ for obj, traj_list in data.items():
 scaler = StandardScaler()
 normalized_trajectories = scaler.fit_transform(representative_trajectories)
 
+print(representative_trajectories)
 print(normalized_trajectories)
 
 np.random.seed(42)
