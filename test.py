@@ -98,7 +98,8 @@ start = time.time()
 model = YOLO("best.pt")
 
 # Open the video file
-video_path = "SampleVids/traffic_vid2Shortened.mp4"
+# video_path = "SampleVids\\bombay_trafficShortened.mp4"
+video_path = "SampleVids\\traffic_vid2Shortened.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Store the track history
@@ -139,8 +140,16 @@ while cap.isOpened():
     if success:
         results = model.track(frame, persist=True, tracker=tracker)
         
+        if not (results and results[0] and results[0].boxes):
+            continue
+
+        if results[0].boxes.id is not None:
+            track_ids = results[0].boxes.id.int().tolist()
+        else:
+            track_ids = []  # Handle cases with no tracking ID
+        
         boxes = results[0].boxes.xywh
-        track_ids = results[0].boxes.id.int().tolist()
+        # track_ids = results[0].boxes.id.int().tolist()
         classes = results[0].boxes.cls.tolist()
         
         annotated_frame = results[0].plot()
@@ -202,7 +211,7 @@ def process_trajectory(track_id, track, all_tracks, frame_width, frame_height, v
     return None
 
 # Calculate velocities and nearby objects
-min_track_length = 5
+min_track_length = 3
 track_data = {}
 
 max_threads = min(32, os.cpu_count() + 4)

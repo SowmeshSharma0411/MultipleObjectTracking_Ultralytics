@@ -46,9 +46,9 @@ labels = gmm.fit_predict(normalized_trajectories)
 
 for i, obj in enumerate(data.keys()):
     if labels[i] == 0:
-        classification = 'rash'
-    else:
         classification = 'non-rash'
+    else:
+        classification = 'rash'
 
     print(f"Object {obj} is classified as: {classification}")
 
