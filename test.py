@@ -202,7 +202,7 @@ def process_trajectory(track_id, track, all_tracks, frame_width, frame_height, v
             current_frame_objects = [t[i][:2] for t in all_tracks.values() if len(t) > i and int(t[i][4]) in vehicle_classes]
 
             nearby = count_nearby_objects(point[:2], current_frame_objects, dynamic_radius, frame_width, frame_height)
-            nearby_objects.append(nearby)
+            nearby_objects.append(max(0,nearby))
         
         return str(track_id), [
             (x, y, w, h, dx, dy, speed, nearby)
