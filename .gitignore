@@ -5,3 +5,8 @@ yolov8m.pt
 yolov8n.pt
 yolov8x.pt
 models/
+RashDrivingDetection/Outputs/
+RashDrivingDetection/Inputs/
+acci_model.pt
+best_yolo.pt
+best.pt
