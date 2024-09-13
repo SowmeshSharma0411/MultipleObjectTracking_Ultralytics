@@ -5,4 +5,4 @@ Next steps(Sowmesh):
 * Try improving the accident model. Improve prediction accuracy. Or trying coming up with some fail safe: like bounding box overlap amt and then based on that some calculations lets see.
 
 Next Steps(Kale):
-*footpath riding come up with some base code.
+* footpath riding come up with some base code.
