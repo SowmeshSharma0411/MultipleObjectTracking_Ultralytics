@@ -131,11 +131,10 @@ def process_video(video_path):
     start = time.time()
     # Load the YOLOv8 model
     model = YOLO("best.pt")
-    video_path = "SampleVids\\traffic_vid2Shortened.mp4"
     cap = cv2.VideoCapture(video_path)
     
     video_name = os.path.splitext(os.path.basename(video_path))[0]
-    output_dir = os.path.join("BACKGATE", video_name)
+    output_dir = os.path.join("runs", "detect", "BACKGATE", video_name)
     os.makedirs(output_dir, exist_ok=True)
     
     # Store the track history
@@ -160,7 +159,7 @@ def process_video(video_path):
     print(fps, width, height)
 
     frame_diagonal = np.sqrt(width**2 + height**2)
-    frame_stride = max(1, int(fps / 1.5))  # Adaptive frame stride
+    frame_stride = max(1, int(fps / 2))  # Adaptive frame stride
     frame_count = 0
 
     # Vehicle classes in COCO dataset
@@ -174,7 +173,7 @@ def process_video(video_path):
     while cap.isOpened():
         success, frame = cap.read()
         if success:
-            results = model.track(frame, persist=True, tracker=tracker)
+            results = model.track(frame, persist=True, tracker=tracker, conf=0.15)
             
             if not (results and results[0] and results[0].boxes):
                 continue
@@ -230,10 +229,10 @@ def process_video(video_path):
     min_track_length = 3
     track_data = {}
 
-    max_threads = min(32, os.cpu_count() + 4)
+    max_threads = min(8, os.cpu_count())
 
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        future_to_track = {executor.submit(process_trajectory, track_id, track, track_history, width, height, vehicle_classes): track_id for track_id, track in track_history.items()}
+        future_to_track = {executor.submit(process_trajectory, track_id, track, track_history, width, height, vehicle_classes, frame_stride, fps, frame_diagonal): track_id for track_id, track in track_history.items()}
         for future in concurrent.futures.as_completed(future_to_track):
             result = future.result()
             if result:
@@ -254,7 +253,8 @@ def process_video(video_path):
     print("It took", end - start, "seconds!")
     
 if __name__ == "__main__":
-    input_dir = "SampleVids"
+    # input_dir = "D:\\Sowmesh\\ENTRANCE"
+    input_dir = "D:\\Sowmesh\\BACK GATE"
     mp4_files = [f for f in os.listdir(input_dir) if f.endswith(".mp4")]
     
     for video_file in mp4_files:
