@@ -30,6 +30,7 @@ def apply_dwt(rash_histiry_data, wavelet = 'db1'):
         for timestep in series:
             # Apply DWT on each time step (6 features per step)
             coeffs = pywt.dwt(timestep, wavelet)  # Decompose using DWT
+            print(coeffs)
 
             # Concatenate approximation and detail coefficients
             dwt_step = np.concatenate((coeffs[0], coeffs[1]))
@@ -39,7 +40,7 @@ def apply_dwt(rash_histiry_data, wavelet = 'db1'):
     
     return dwt_features
 
-def cluster_dwt_features_gmm(dwt_data, num_clusters = 10):
+def cluster_dwt_features_gmm(dwt_data, max_clusters = 10):
     flattened_data = []
     keys = []
 
@@ -78,6 +79,8 @@ dwt_transformed_data = apply_dwt(filtered_data)
 gmm_clustered_labels = cluster_dwt_features_gmm(dwt_transformed_data)
 gmm_labeled_time_series = label_time_series(gmm_clustered_labels, filtered_data)
 file_save_path = 'track_history1_labelled.pkl'
+
+print(gmm_clustered_labels)
 
 with open(file_save_path, 'wb') as f:
     pickle.dump(gmm_labeled_time_series, f)
