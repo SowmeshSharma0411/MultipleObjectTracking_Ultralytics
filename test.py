@@ -159,7 +159,7 @@ def process_video(video_path):
     print(fps, width, height)
 
     frame_diagonal = np.sqrt(width**2 + height**2)
-    frame_stride = max(1, int(fps / 2))  # Adaptive frame stride
+    frame_stride = max(1, int(fps / 5))  # Adaptive frame stride
     frame_count = 0
 
     # Vehicle classes in COCO dataset
